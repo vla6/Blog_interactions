@@ -1,2 +1,12 @@
 .DS_Store
 **/*.cpython-310..pyc
+**/*.cpython-310..pyc
+**/*.cpython-310..pyc
+data_notes.xlsx
+.ipynb_checkpoints/01_data_import-checkpoint.ipynb
+data/*
+tmp/*
+__pycache__/*
+kaggle_input/*
+notes_lending_club.docx
+.ipynb_checkpoints/
