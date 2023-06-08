@@ -41,7 +41,7 @@ predictor_features = ['loan_amnt', 'term', 'int_rate', 'emp_length', 'home_owner
 #
 
 info_features = ['id', 'grade', 'sub_grade', 'hardship_flag', 'debt_settlement_flag',
-                'hardship_amount', 'settlement_amount', 'addr_state', 'purpose'
+                'hardship_amount', 'settlement_amount', 'addr_state', 'purpose',
                 'total_rec_prncp', 'total_rec_int', 'tot_coll_amt', 'tot_cur_bal',
                 'application_type']
 
@@ -52,6 +52,8 @@ info_features = ['id', 'grade', 'sub_grade', 'hardship_flag', 'debt_settlement_f
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import scipy
+import shap
+from PyALE import ale
 
 def plot_defaults():
     """ Set default plot parameters"""
@@ -101,6 +103,34 @@ def plot_default_scale(x_data, thresh=3):
     if (scipy.stats.skew(x_data) > thresh):
         return 'log'
     return 'linear'
+
+def plot_comp_ale_shap(ale_data, shap_data, color_categories = [36, 60],
+             title = None):
+    
+    cmap = mpl.cm.coolwarm
+    cnorm  = mpl.colors.Normalize(vmin=0, vmax= len(color_categories) -1)
+    color_scalar_map = mpl.cm.ScalarMappable(norm=cnorm, cmap=cmap)
+    color_dict = {color_categories[i]: color_scalar_map.to_rgba(i) 
+                  for i in range(0, len(color_categories))}
+    
+    fig, ax = plt.subplots(1, 2, figsize = (12,3), sharex = True)
+    
+    ale_data[[36, 60]].plot(legend=None, ax=ax[0], cmap=cmap)
+    ax[0].set_title('ALE')
+    ax[0].set_ylabel(None)
+
+    for c in color_categories:
+        shap_data[shap_data['term'] == c][['int_rate', 'shap']] \
+            .plot(x='int_rate', y='shap', kind='scatter', ax=ax[1], color=color_dict[c],
+                 label=c)
+    ax[1].set_title('SHAP')  
+    ax[1].set_ylabel(None)
+    ax[1].legend(bbox_to_anchor=(1.2, 1.05))
+    
+    if title is not None:
+        fig.suptitle(title)
+    
+    return fig
 
 
 #
