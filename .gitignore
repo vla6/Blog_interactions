@@ -10,3 +10,5 @@ __pycache__/*
 kaggle_input/*
 notes_lending_club.docx
 .ipynb_checkpoints/
+interactions_package/interactions_package/__pycache__/*
+interactions_package/interactions_package/__pycache__/_*

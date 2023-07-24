@@ -1,6 +1,7 @@
 ##
 ## Functions related to traversing a sklearn decision tree
-## (sklearn.tree._tree.Tree)
+## (sklearn.tree._tree.Tree).  Note that this code
+## assumes a binary classification tree (1 output, 1 value per node)
 ##
 
 import pandas as pd
@@ -44,7 +45,7 @@ def get_thresholds_feature(tree, feature_index=0):
 
 # Function to return all nodes upstream of a given node
 
-def get_path_nodes(tree, search_node_id,
+def get_upstream_nodes(tree, search_node_id,
                    node_id = 0,
                    info_ary = np.array([])):
     """ Traverses the tree, getting the indices of all nodes upstream
@@ -78,11 +79,90 @@ def get_path_nodes(tree, search_node_id,
         
     # Helper function to pass most features to the next node
     def return_node(node_id):
-        return get_path_nodes(tree, search_node_id, node_id, info_ary)
+        return get_upstream_nodes(tree, search_node_id, node_id, info_ary)
     
     # Traverse tree both ways
     return np.append(return_node(this_left),
             return_node(this_right))
+
+# Function to return all nodes downstream of a given node
+
+def get_downstream_nodes(tree, node_id,
+                   info_ary = np.array([])):
+    """ Traverses the tree, getting the indices of all nodes downstream
+    of a given node id. Recursive function.  Usualy you willl not modify 
+    node_id or info_ary; these are used during recursion.
+      Inputs:
+        tree:  The tree to traverse (sklearn.tree._tree.Tree)
+        node_id: the ID of the node whose descendents you want to find
+        info_ary:  Array containing the upstream nodes, starting from the root node.
+          Empty if starting from root.
+      Value:  Numpy array containing indices of nodes involved in the path.
+    """ 
+    
+    # Add this node to the array
+    info_ary = np.append(info_ary, node_id)
+    
+    # Get children
+    this_left = tree.children_left[node_id]
+    this_right = tree.children_right[node_id]
+    
+    # If a leaf node, return the array
+    if this_left == this_right:
+        return info_ary
+        
+    # Helper function to pass most features to the next node
+    def return_node(node_id):
+        return get_downstream_nodes(tree, node_id, info_ary)
+    
+    # Traverse tree both ways
+    return np.unique(np.append(return_node(this_left),
+            return_node(this_right)))
+
+# Gets the depth of each node in a tree
+
+def get_node_depth_ary(tree, node_id = 0, depth = 0):
+    """ Traverses the tree, finding node depths.  Returns a 2D array with
+    1 row per node, columns are the node id and depth.  
+      Inputs:
+        tree:  The tree to traverse (sklearn.tree._tree.Tree)
+        node_id: starting node for traversal, usually the root
+        depth: starting depth (depth of node_id)
+      Value:  2D numpy array containing 1 row per tree node, with the
+        node id and depth of each.
+    """ 
+
+    # Get children
+    this_left = tree.children_left[node_id]
+    this_right = tree.children_right[node_id]
+    
+    # If a leaf node, return the depth
+    if this_left == this_right:
+        return np.array([node_id, depth]).reshape((1,2))
+        
+    # Helper function to pass most features to the next node
+    def return_node(node_id, depth):
+        return get_node_depth_ary(tree, node_id, depth)
+    
+    # Traverse tree both ways
+    return np.concatenate((np.array([node_id, depth]).reshape((1,2)),
+                          return_node(this_left, depth+1),
+                           return_node(this_right, depth+1)), axis=0)
+
+
+def get_node_depth(tree, node_id = 0, depth = 0):
+    """ Traverses the tree, finding node depths.  Returns a 1D array of
+    depths for each node.  array with
+      Inputs:
+        tree:  The tree to traverse (sklearn.tree._tree.Tree)
+        node_id: starting node for traversal, usually the root
+        depth: starting depth (depth of node_id)
+      Value:  Numpy array containing depths of each node.
+    """ 
+    
+    ary_2 = get_node_depth_ary(tree, node_id, depth)
+    return ary_2[ary_2[:,0].argsort()][:, 1]
+
 
 #
 # Tree simplification functions, to create
@@ -134,9 +214,10 @@ def convert_tree_ary_to_dict(simplified_ary):
 def simplify_tree_include_ary(tree, include_nodes, node_id = 0):
     """ Traverses the tree, trimming off branches not in the included list.
     Returns a 2D numpy array containing the new tree information, with original node
-    identifiers.
-    Recursive function.  Usualy you willl not modify node_id and will traverse from
-    the root.
+    identifiers.  Recursive function. 
+      If the traversal starts above the level included, this function will
+    return an empty array. To trim off the top of a tree, start traversal where the inclusion 
+    starts. 
       Inputs:
         tree:  The tree to traverse (sklearn.tree._tree.Tree)
         include_nodes: List of nodes to retain in the tree
@@ -154,37 +235,33 @@ def simplify_tree_include_ary(tree, include_nodes, node_id = 0):
            original_node_index
     """
     
-    # Get info kept for all nodes
-    this_n_node_samples = tree.n_node_samples[node_id]
-    this_impurity = tree.n_node_samples[node_id]
-    this_value = tree.value[node_id][0][0]
-    
     # Get children
     this_children_left = tree.children_left[node_id]
     this_children_right = tree.children_right[node_id]
-        
-    # If this node isn't included, it's a leaf now. End traversal.
-    if (not(node_id in include_nodes)) or (this_children_left == this_children_right):
-        return np.array([leaf_index, leaf_index, dummy_feature_index, dummy_threshold, 
-                         this_n_node_samples, this_impurity, this_value, node_id]).reshape(8,1)
     
+    # If no children allowed, don't go on
+    if (this_children_right not in include_nodes) and (this_children_left not in include_nodes):
+        this_children_right = -1
+        this_children_left = -1
 
-    # Get additional info for retained nodes         
-    this_feature = tree.feature[node_id]
-    this_threshold = tree.threshold[node_id]
-        
-    # Package info into column
-    this_info = np.array([this_children_left, this_children_right, this_feature, 
-                          this_threshold, this_n_node_samples, this_impurity, this_value,
-                          node_id]).reshape(8,1)
+    # Add selected node data to the 2D array
+    this_info = np.array([this_children_left, this_children_right, tree.feature[node_id],
+                              tree.threshold[node_id], tree.n_node_samples[node_id], 
+                              tree.impurity[node_id], tree.value[node_id][0,0], node_id]) \
+            .reshape(8,1)
+    
     
     # Helper function to pass information to children
     def return_node(node_id):
         return simplify_tree_include_ary(tree, include_nodes, node_id)
     
-    # Traverse tree both ways
-    return np.concatenate((this_info, return_node(this_children_left),
-           return_node(this_children_right)), axis=1)
+    # Traverse if included
+    if (this_children_left == this_children_right):
+        return this_info
+    else:
+        return np.concatenate((this_info, return_node(this_children_left),
+               return_node(this_children_right)), axis=1)
+
 
 # Converts 2D numpy array-format trimmed tree to a dictionary format
 
@@ -209,8 +286,15 @@ def simplify_tree_include_dict(tree, include_nodes, node_id = 0):
            original_node_index
     """ 
     
+    # If the root isn't in the included nodes, find the top-level included node.
+    include_node_ary = np.array(include_nodes, dtype=int)
+    depths = get_node_depth(tree, 0)[include_node_ary]
+    
+    # Get starting point - note we should only have one, so ignore multiples!
+    start_node = include_node_ary[np.where(depths == np.min(depths))[0][0]]
+    
     # Get trimmed tree as 2D array
-    this_info_ary = simplify_tree_include_ary(tree, include_nodes, node_id)
+    this_info_ary = simplify_tree_include_ary(tree, include_nodes, start_node)
     
     this_info_dict = convert_tree_ary_to_dict(this_info_ary)
     
@@ -241,11 +325,12 @@ def simplify_tree_leaf_ary(tree, leaf_nodes, node_id = 0):
     
     include_list = [i for i in range(len(tree.feature)) if i not in leaf_nodes]
     
-    return simplify_tree_include_ary(tree, include_list, node_id)
+    return simplify_tree_include_ary(tree, include_list, 0)
 
 def simplify_tree_leaf_dict(tree, leaf_nodes, node_id = 0):
-    """ Traverses the tree, trimming off branches not in the included list.
-    Calls simplify_tree_leaf_ary to perform recursive tree traversal.
+    """ Traverses the tree, trimming off any child nodes of the list of 
+    leaf nodes supplied.
+    Calls simplify_tree_leaf_ary to perform the removal (via simplify_tree_include_ary)
     Then converts the 2D array to a dictionary of arrays, and reindexes
     the nodes so that the information can be used in the usual way.
       Inputs:
@@ -323,8 +408,8 @@ def get_tree_stats_two_features(tree, node_id = 0,
         info_ary[1] += 1
     elif (this_feature == feature_index_2):
         info_ary[2] += 1
-        value_left = tree.tree_.value[this_left][0][0]
-        value_right = tree.tree_.value[this_right][0][0]
+        value_left = tree.tree_.value[this_left][0, 0]
+        value_right = tree.tree_.value[this_right][0, 0]
         if value_left >= value_right:
             info_ary[3] += 1
         else:

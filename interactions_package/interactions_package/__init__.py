@@ -1,1 +1,1 @@
-__all__ = ['ip_tree_traversal', 'ip_custom_tree']
+__all__ = ['ip_tree_traversal', 'ip_custom_tree', 'ip_plot']

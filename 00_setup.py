@@ -11,10 +11,11 @@
 # Download from https://www.kaggle.com/datasets/wordsforthewise/lending-club?resource=download
 # and use the "accepted" file.  The path below should point to this file on your system.
 
-input_path = './kaggle_input/accepted_2007_to_2018Q4.csv/accepted_2007_to_2018Q4.csv'
+input_path = '../kaggle_input/accepted_2007_to_2018Q4.csv/accepted_2007_to_2018Q4.csv'
 
 # Directory for temporary or intermediate files
-temp_path = './data/2023_01_25'
+temp_path = '../data/2023_07_20'
+
 
 ###########################################################
 ##
@@ -45,96 +46,9 @@ info_features = ['id', 'grade', 'sub_grade', 'hardship_flag', 'debt_settlement_f
                 'total_rec_prncp', 'total_rec_int', 'tot_coll_amt', 'tot_cur_bal',
                 'application_type']
 
-#
-# Some basic plotting functions - define here 
-#
-
-import matplotlib as mpl
-import matplotlib.pyplot as plt
-import scipy
-import shap
-from PyALE import ale
-
-def plot_defaults():
-    """ Set default plot parameters"""
-    plt.style.use('seaborn-v0_8-white')
-    
-    mpl.rcParams.update({'font.size': 14})
-    mpl.rcParams.update({'axes.titlesize': 16})
-
-def plot_basic_bar(data, y, 
-                   label = None,
-                   n_bars = 10,
-                   figsize = None,
-                   ylabel = None,
-                   title=None,
-                   do_sort = False):
-    """ Create a basic bar plot for a Pandas dataframe."""
-    
-    if do_sort:
-        data = data.copy().sort_values(y, ascending=False)
-        
-    if label != None:
-        data = data.copy().set_index(label)
-        
-    if ylabel == None:
-        ylabel = data[y].name
-        
-    # Set figsize if not explicit
-    if figsize == None:
-        figsize = (4, n_bars/3.3)
-        
-    fig, ax = plt.subplots()
-    
-    data.head(n_bars)[[y]] \
-        .plot(kind='barh', legend=None, figsize=figsize, ax=ax)
-    
-    ax.invert_yaxis()
-    ax.set_title(title)
-    ax.set_ylabel(None)
-    ax.set_xlabel(ylabel)
-    
-    return fig
-
-def plot_default_scale(x_data, thresh=3):
-    """Simple function which decides whether to plot
-    data using a linear or log scale.  If the skewness
-    is past a threshold, use a log scale"""
-    if (scipy.stats.skew(x_data) > thresh):
-        return 'log'
-    return 'linear'
-
-def plot_comp_ale_shap(ale_data, shap_data, color_categories = [36, 60],
-             title = None):
-    
-    cmap = mpl.cm.coolwarm
-    cnorm  = mpl.colors.Normalize(vmin=0, vmax= len(color_categories) -1)
-    color_scalar_map = mpl.cm.ScalarMappable(norm=cnorm, cmap=cmap)
-    color_dict = {color_categories[i]: color_scalar_map.to_rgba(i) 
-                  for i in range(0, len(color_categories))}
-    
-    fig, ax = plt.subplots(1, 2, figsize = (12,3), sharex = True)
-    
-    ale_data[[36, 60]].plot(legend=None, ax=ax[0], cmap=cmap)
-    ax[0].set_title('ALE')
-    ax[0].set_ylabel(None)
-
-    for c in color_categories:
-        shap_data[shap_data['term'] == c][['int_rate', 'shap']] \
-            .plot(x='int_rate', y='shap', kind='scatter', ax=ax[1], color=color_dict[c],
-                 label=c)
-    ax[1].set_title('SHAP')  
-    ax[1].set_ylabel(None)
-    ax[1].legend(bbox_to_anchor=(1.2, 1.05))
-    
-    if title is not None:
-        fig.suptitle(title)
-    
-    return fig
-
 
 #
-# Input data dtypes for 01_data_import
+# Data types information for 01_data_import
 #
 
 input_dtypes = {'id' : 'str',
