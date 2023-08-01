@@ -9,8 +9,10 @@ import numpy as np
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import scipy
+
 import shap
 from PyALE import ale
+from sklearn.linear_model import LinearRegression
 
 def plot_defaults():
     """ Set default plot parameters"""
@@ -60,39 +62,6 @@ def plot_default_scale(x_data, thresh=3):
         return 'log'
     return 'linear'
 
-
-#
-# SHAP and ALE comparison plot
-#
-
-def plot_comp_ale_shap(ale_data, shap_data, color_categories = [36, 60],
-                       features = ['int_rate', 'term'], title = None):
-    """ Prints a plot comparing SHAP and ALE data"""
-    
-    cmap = mpl.cm.coolwarm
-    cnorm  = mpl.colors.Normalize(vmin=0, vmax= len(color_categories) -1)
-    color_scalar_map = mpl.cm.ScalarMappable(norm=cnorm, cmap=cmap)
-    color_dict = {color_categories[i]: color_scalar_map.to_rgba(i) 
-                  for i in range(0, len(color_categories))}
-    
-    fig, ax = plt.subplots(1, 2, figsize = (12,3), sharex = True)
-    
-    ale_data[color_categories].plot(legend=None, ax=ax[0], cmap=cmap)
-    ax[0].set_title('ALE')
-    ax[0].set_ylabel(None)
-
-    for c in color_categories:
-        shap_data[shap_data[features[1]] == c][[features[0], 'shap']] \
-            .plot(x=features[0], y='shap', kind='scatter', ax=ax[1], color=color_dict[c],
-                 label=c)
-    ax[1].set_title('SHAP')  
-    ax[1].set_ylabel(None)
-    ax[1].legend(bbox_to_anchor=(1.2, 1.05))
-    
-    if title is not None:
-        fig.suptitle(title)
-    
-    return fig
 
 #
 # SHAP interaction plotting
@@ -145,9 +114,10 @@ def shap_dependence_plot(shap_data, X, features,
       Value:  Figure containing the modified dependence plot
     """
     
+          
     # Get standard title, if requested
     if title == 'features':
-        if (len(features) >= 2) & (features[0] != features[1]):
+        if (len(features) >= 2) and (features[0] != features[1]):
             title = ':'.join(list(features))
         else:
             title = features[0]
@@ -155,23 +125,34 @@ def shap_dependence_plot(shap_data, X, features,
         title = title_prefix + title
         
     # If needed, reverse the feature order for interaction plots
-    if (len(features) == 2) & (features[0] != features[1]):
+    if (len(features) == 2) and (features[0] != features[1]):
         levels_1 = len(X[features[0]].sample(100).value_counts())
         if levels_1 < 4:
             features = features[::-1]
     
     # Get but do not show default plot
     fig, ax = plt.subplots(figsize=figsize)
+    
     shap.dependence_plot(features, shap_data, X, ax=ax, show=False)
     
+    # Turn points gray for main effects
+    if (len(features) == 2) and (features[0] == features[1]):
+        d = ax.collections[0]
+        d.set_color('darkgray')
+    
+    # Make a full frame
+    ax.spines['top'].set_visible(True)
+    ax.spines['right'].set_visible(True)
+    ax.spines['bottom'].set_visible(True)
+    ax.spines['left'].set_visible(True)
    
     # Modify x axis scale if necessary
     x_feature = ax.get_xlabel()
-    ax.set_xscale(setup.plot_default_scale(X[x_feature]))
+    ax.set_xscale(plot_default_scale(X[x_feature]))
     
     # Modify y axis scale if necessary
     y_vals = [x[1] for x in ax.collections[0].get_offsets()]
-    y_scale = setup.plot_default_scale(y_vals)
+    y_scale = plot_default_scale(y_vals)
     if (y_scale == 'log'):
         y_label = y_label + ' (log scale)'
         ax.set_yscale(y_scale)
@@ -179,8 +160,16 @@ def shap_dependence_plot(shap_data, X, features,
     ax.autoscale(axis='both')
     
     # Change title and axis label
-    plt.title(title)
+    plt.title(title, fontsize=20)
     ax.set_ylabel(y_label)
+    
+    # Set font size
+    for item in ([ax.title, ax.xaxis.label, ax.yaxis.label] + \
+                     ax.get_xticklabels() + ax.get_yticklabels()):
+        item.set_fontsize(20)
+        
+    # Resize plot
+    fig.set_size_inches(figsize[0], figsize[1])
     
     # Optionally save the plot
     if output_path is not None:
@@ -197,7 +186,7 @@ def shap_dependence_plot(shap_data, X, features,
 def ale_2way_plot(data, 
                   cmap = mpl.cm.coolwarm,
                   figsize=(7,4),
-                  y_label= '2-way ALE',
+                  y_label= 'ALE value',
                   title = None,
                   title_prefix = None,
                   legend_colobar_thresh = 4):
@@ -256,3 +245,90 @@ def ale_2way_plot(data,
     plt.xscale(plot_default_scale(list(data.index)))
     
     return fig
+
+#
+# SHAP and ALE comparison plotting
+# For term and interest rate explorations
+#
+
+# Take ALE and SHAP data, and plot side-by-side
+# For a discrete second feature only
+def plot_comp_ale_shap(ale_data, shap_data, color_categories = [36, 60],
+                       features = ['int_rate', 'term'], title = None):
+    """ Prints a plot comparing SHAP and ALE data"""
+    
+    # Set the color categories, if none
+    if color_categories is None:
+        color_categories = list(ale_data.columns)
+    
+    cmap = mpl.cm.coolwarm
+    cnorm  = mpl.colors.Normalize(vmin=0, vmax= len(color_categories) -1)
+    color_scalar_map = mpl.cm.ScalarMappable(norm=cnorm, cmap=cmap)
+    color_dict = {color_categories[i]: color_scalar_map.to_rgba(i) 
+                  for i in range(0, len(color_categories))}
+    
+    fig, ax = plt.subplots(1, 2, figsize = (12,3), sharex = True)
+    
+    ale_data[color_categories].plot(legend=None, ax=ax[0], cmap=cmap)
+    ax[0].set_title('ALE')
+    ax[0].set_ylabel(None)
+
+    for c in color_categories:
+        shap_data[shap_data[features[1]] == c][[features[0], 'shap']] \
+            .plot(x=features[0], y='shap', kind='scatter', ax=ax[1], color=color_dict[c],
+                 label=c)
+    ax[1].set_title('SHAP')  
+    ax[1].set_ylabel(None)
+    ax[1].legend(bbox_to_anchor=(1.2, 1.05))
+    
+    if title is not None:
+        fig.suptitle(title)
+    
+    return fig
+
+# Single linear regression
+# Return series containing value, fit coefficient, and prediction at fixed value
+# Used to determine if ALE and SHAP values have similar trends
+def lin_reg_info(x_data, y_data, pred_point = None):
+    
+    # Fit simple linear model with intercept
+    reg = LinearRegression().fit(x_data, y_data)
+    
+    # Get points for prediction - default to the last value
+    if pred_point is None:
+        pred_point = x_data[-1]
+    
+    # Predict at the point
+    try:
+        pred_res = reg.predict(pred_point) [0]
+    except:
+        pred_res = reg.predict(np.array(pred_point).reshape(1, -1)) [0]
+    
+    # Return fit coefficients and prediction
+    return pd.Series([reg.intercept_, pred_res] + list(reg.coef_) ,
+                     index = ['interecept', 'prediction'] + [f'coef_{i}' for i in range(len(reg.coef_))])
+
+def ale_lin_reg_info(ale_data, feature_categories = [36, 60]):
+    
+    if feature_categories is None:
+        feature_categories = list(ale_data.columns)
+    ale_x = np.array(ale_data.index).reshape(-1, 1)
+    ale_df = pd.concat([lin_reg_info(ale_x, ale_data[f].tolist()) \
+                            for f in feature_categories], axis=1)
+    ale_df.columns = feature_categories
+    return ale_df
+
+def shap_lin_reg_info(shap_data, feature_names = ['int_rate', 'term'],
+                      feature_categories = [36, 60],
+                     shap_value_name = 'shap'):
+    
+    if feature_categories is None:
+        feature_categorues = shap_data[feature_names[1]].drop_duplicates().to_list()
+    shap_df = pd.concat([lin_reg_info(shap_data[shap_data[feature_names[1]] == f][feature_names[0]] \
+                                          .to_numpy().reshape(-1, 1), 
+                                      shap_data[shap_data[feature_names[1]] == f][shap_value_name]) \
+                             for f in feature_categories],
+                       axis=1)
+    shap_df.columns = feature_categories
+    return shap_df
+                      
