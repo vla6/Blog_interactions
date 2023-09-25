@@ -14,7 +14,7 @@
 input_path = '../kaggle_input/accepted_2007_to_2018Q4.csv/accepted_2007_to_2018Q4.csv'
 
 # Directory for temporary or intermediate files
-temp_path = '../data/2023_07_20'
+temp_path = '../data/2023_09_18'
 
 
 ###########################################################

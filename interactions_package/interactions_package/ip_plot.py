@@ -17,8 +17,8 @@ from sklearn.linear_model import LinearRegression
 def plot_defaults():
     """ Set default plot parameters"""
     plt.style.use('seaborn-v0_8-white')
-    mpl.rcParams.update({'font.size': 14})
-    mpl.rcParams.update({'axes.titlesize': 16})
+    mpl.rcParams.update({'font.size': 16})
+    mpl.rcParams.update({'axes.titlesize': 18})
 
 def plot_basic_bar(data, y, 
                    label = None,
@@ -185,7 +185,7 @@ def shap_dependence_plot(shap_data, X, features,
 
 def ale_2way_plot(data, 
                   cmap = mpl.cm.coolwarm,
-                  figsize=(7,4),
+                  figsize=(6,4),
                   y_label= 'ALE value',
                   title = None,
                   title_prefix = None,
@@ -254,7 +254,10 @@ def ale_2way_plot(data,
 # Take ALE and SHAP data, and plot side-by-side
 # For a discrete second feature only
 def plot_comp_ale_shap(ale_data, shap_data, color_categories = [36, 60],
-                       features = ['int_rate', 'term'], title = None):
+                       features = ['int_rate', 'term'], title = None,
+                      legend_title='term', y_label = None,
+                      sharex = True, sharey = False,
+                      ylim=None):
     """ Prints a plot comparing SHAP and ALE data"""
     
     # Set the color categories, if none
@@ -267,7 +270,7 @@ def plot_comp_ale_shap(ale_data, shap_data, color_categories = [36, 60],
     color_dict = {color_categories[i]: color_scalar_map.to_rgba(i) 
                   for i in range(0, len(color_categories))}
     
-    fig, ax = plt.subplots(1, 2, figsize = (12,3), sharex = True)
+    fig, ax = plt.subplots(1, 2, figsize = (14,4), sharex = sharex, sharey=sharey)
     
     ale_data[color_categories].plot(legend=None, ax=ax[0], cmap=cmap)
     ax[0].set_title('ALE')
@@ -277,9 +280,14 @@ def plot_comp_ale_shap(ale_data, shap_data, color_categories = [36, 60],
         shap_data[shap_data[features[1]] == c][[features[0], 'shap']] \
             .plot(x=features[0], y='shap', kind='scatter', ax=ax[1], color=color_dict[c],
                  label=c)
+        
     ax[1].set_title('SHAP')  
-    ax[1].set_ylabel(None)
-    ax[1].legend(bbox_to_anchor=(1.2, 1.05))
+    ax[1].set_ylabel(y_label)
+    ax[1].legend(bbox_to_anchor=(1.2, 1.05), title=legend_title)
+    
+    if ylim is not None:
+        ax[0].set_ylim(ylim)
+        ax[1].set_ylim(ylim)
     
     if title is not None:
         fig.suptitle(title)
@@ -287,48 +295,102 @@ def plot_comp_ale_shap(ale_data, shap_data, color_categories = [36, 60],
     return fig
 
 # Single linear regression
-# Return series containing value, fit coefficient, and prediction at fixed value
+# Return series containing value and fit coefficient(s)
 # Used to determine if ALE and SHAP values have similar trends
-def lin_reg_info(x_data, y_data, pred_point = None):
+def lin_reg_info(x_data, y_data,):
     
     # Fit simple linear model with intercept
     reg = LinearRegression().fit(x_data, y_data)
-    
-    # Get points for prediction - default to the last value
-    if pred_point is None:
-        pred_point = x_data[-1]
-    
-    # Predict at the point
-    try:
-        pred_res = reg.predict(pred_point) [0]
-    except:
-        pred_res = reg.predict(np.array(pred_point).reshape(1, -1)) [0]
+
     
     # Return fit coefficients and prediction
-    return pd.Series([reg.intercept_, pred_res] + list(reg.coef_) ,
-                     index = ['interecept', 'prediction'] + [f'coef_{i}' for i in range(len(reg.coef_))])
+    return pd.Series([reg.intercept_] + list(reg.coef_) ,
+                     index = ['interecept'] + [f'coef_{i}' for i in range(len(reg.coef_))])
 
-def ale_lin_reg_info(ale_data, feature_categories = [36, 60]):
+# Linear regression info from ALE - also get average vales for a range
+# of the index (e.g. int_rate) - will be used to verify the ALE
+# curve is of the shape we are looking for
+def ale_lin_reg_info(ale_data, feature_categories = [36, 60],
+                    mean_range = [20, 999]):
     
+    # Linear regression info
     if feature_categories is None:
         feature_categories = list(ale_data.columns)
     ale_x = np.array(ale_data.index).reshape(-1, 1)
     ale_df = pd.concat([lin_reg_info(ale_x, ale_data[f].tolist()) \
                             for f in feature_categories], axis=1)
     ale_df.columns = feature_categories
-    return ale_df
+    
+    # Values at each column
+    ale_mean_vals = ale_data[(ale_data.index >= mean_range[0]) & (ale_data.index <= mean_range[1])] \
+        .apply('mean', axis=0)
+    ale_mean_vals.name = 'mean_value'
+    
+    return pd.concat([ale_df, pd.DataFrame(ale_mean_vals).T], axis=0)
 
+# Linear regression info from SHAP - also get average values for the first
+# feature, e.g. int_rate, which will be used to identify SHAP curves that
+# are similar to the ones I am intereste in
 def shap_lin_reg_info(shap_data, feature_names = ['int_rate', 'term'],
                       feature_categories = [36, 60],
-                     shap_value_name = 'shap'):
+                     shap_value_name = 'shap',
+                     mean_range = [20, 999]):
     
+    # Linear regression info
     if feature_categories is None:
-        feature_categorues = shap_data[feature_names[1]].drop_duplicates().to_list()
+        feature_categories = shap_data[feature_names[1]].drop_duplicates().to_list()
     shap_df = pd.concat([lin_reg_info(shap_data[shap_data[feature_names[1]] == f][feature_names[0]] \
                                           .to_numpy().reshape(-1, 1), 
                                       shap_data[shap_data[feature_names[1]] == f][shap_value_name]) \
                              for f in feature_categories],
                        axis=1)
     shap_df.columns = feature_categories
+    
+    # Mean value in range
+    range_feat = feature_names[0]
+    mean_vals = shap_data[(shap_data[range_feat] >= mean_range[0]) & \
+        (shap_data[range_feat] <= mean_range[1])] \
+        .groupby(feature_names[1]) \
+        .agg('mean') \
+        [[shap_value_name]] \
+        .T
+    mean_vals.index=['mean_value']
+    shap_df = pd.concat([shap_df, mean_vals], axis = 0)
+    
     return shap_df
+
+def comb_ale_shap_lin_reg_info(ale_data, shap_data, 
+                               flatten_data = True,
+                               feature_names = ['int_rate', 'term'],
+                               feature_categories = None,
+                               shap_value_name = 'shap'):
+    
+    lin_fit = pd.concat([ale_lin_reg_info(ale_data, feature_categories = feature_categories),
+                         shap_lin_reg_info(shap_data, feature_names = feature_names,
+                                          shap_value_name = shap_value_name,
+                                          feature_categories = feature_categories)],
+                        axis=0, keys=['ale', 'shap']) 
+    
+    # Return the dataset if applicable
+    if not(flatten_data):
+        return lin_fit
+    
+    # Optionally flatten data to 1 row
+    
+    # Get all SHAP/ ALE info together
+    lin_fit_1 = lin_fit.reset_index(level = 1).pivot(columns='level_1')
+    lin_fit_1.columns = [f'{c[1]}_{c[0]}'for c in lin_fit_1.columns]
+    lin_fit_1['ind'] = 0
+    
+    # Get prediction differences
+    #lin_fit_1_pred_cols= [c for c in lin_fit_1.columns if c.startswith('prediction')][0:2]
+    #lin_fit_1['predict_diff'] = lin_fit_1[lin_fit_1_pred_cols[1]] - lin_fit_1[lin_fit_1_pred_cols[0]] 
+    
+    # Place all info onto one row
+    lin_fit_2 = lin_fit_1.reset_index().pivot(index='ind', columns='index') \
+        .reset_index(drop=True)
+    lin_fit_2.columns = [f'{c[0]}_{c[1]}' for c in lin_fit_2.columns]
+
+    
+    return lin_fit_2
                       
