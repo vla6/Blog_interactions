@@ -4,11 +4,11 @@ Measuring feature interactions with SHAP and ALE, and exploring why the results 
 
 To run, do the following:
 
-#  Download the Lending Club Loans data from https://www.kaggle.com/datasets/wordsforthewise/lending-club?resource=download
-#  Modify 00_setup.py
-  # input_path should point to the location of the file "accepted_2007_to_2018Q4.csv" on your system
-  # temp_path should point to a writeable directory on your system (intermediate data files, plots, etc. will be placed here)
-# Run scripts in numeric order
+1.  Download the Lending Club Loans data from https://www.kaggle.com/datasets/wordsforthewise/lending-club?resource=download
+2. Modify 00_setup.py
+  * input_path should point to the location of the file "accepted_2007_to_2018Q4.csv" on your system
+  * temp_path should point to a writeable directory on your system (intermediate data files, plots, etc. will be placed here)
+3. Run scripts in numeric order
 
 The notebooks compare SHAP, ALE, and Friedman's H measures of interaction strength.  They especially focus on the interaction between interest rate and term, because SHAP and ALE disagree dramatically on the direction of that interaction.  
 
